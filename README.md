@@ -1,6 +1,5 @@
 # CS 138 Homework 1 — Multi-Armed Bandits in Non-Stationary Settings
 
-Code README
 
 ## Contents
 
@@ -13,7 +12,7 @@ Code README
 
 ## Requirements
 
-- Python 3.8+
+- `Python 3.8+`
 - `numpy`
 - `matplotlib`
 
@@ -21,6 +20,10 @@ Install with:
 
 ```bash
 pip install numpy matplotlib
+```
+or
+```bash
+pip install -r requirements.txt
 ```
 
 ## How to Run
@@ -74,4 +77,4 @@ agent.update(action, reward)
 
 - All environments use NumPy's Generator RNG (`np.random.default_rng`) with a per-run seed so that results are reproducible; environment and agent RNGs are seeded independently to avoid correlated randomness between the agent's exploration and the environment's dynamics.
 - Ties in greedy action selection are broken uniformly at random.
-- A **GEN-AI PROMPT LOG** must accompany this submission per the course policy; see `prompt_log.txt` (fill in / attach the conversation used to generate this code, as required by the syllabus).
+
