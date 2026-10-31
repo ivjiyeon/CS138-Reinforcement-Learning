@@ -1,0 +1,132 @@
+User: My homework is to implement sutton and barto's textbook exercise 5.12 racetrack. Details are:
+Part 1: Race Track
+For part 1, implement the race track programming assignment in the book. Conduct the experiments and show the results. Visualize an example run of the trained policy. Visualize the learning curves for 2+ conditions (you can compare two different algorithms, or different parameters for the same algorithm)
+
+Part 2: Multi Agent Racetrack
+For Part 2, modify the environment to include another race car, one that follows the policy learned in Part 1. The agent should now include some information in its state space that encodes the position and possibly, the velocity, of the other car. Conduct an experiment under varying conditions and discuss the results. 
+
+Part 3: Design your own grid world. 
+Design a grid world. Think about whether the grid world is solvable by MC methods. Conduct an experiment that compares either multiple versions of the environment or 2+ MC algorithms in the same environment. 
+
+help me write the code
+
+Agent: I'll build this as a small package: a shared Monte Carlo library, the racetrack environment, a grid world, and one script per part. Then I'll run each part to check that it works before handing it over.
+
+Running the Part 1 smoke test now. The `time` command isn't available in this shell, so I'm rerunning without it.
+
+Part 2 now distinguishes the modes. Next is Part 3, a key-and-door cliff grid world, which I'm writing with a solvability check.
+
+The optimal route switches from the key route to the safe route somewhere between slip 0.02 and 0.05, so I'm using slips of 0, 0.02 and 0.1 for the environment comparison.
+
+The greedy policy still dives into the cliff at the start, so I'm inspecting the learned Q-values directly to find out why.
+
+On-policy MC is fast and learns well. Off-policy is still stuck at 4,000 episodes, so I'm checking whether it just needs more episodes or something is wrong.
+
+Part 2 runs quickly and the conditions show meaningful differences. Now I'll check that the plots render sensibly.
+
+The racetrack trajectories look right, including a visible crash-and-restart in the noisy run. One more look, at the Part 3 policy figure.
+
+I wrote the code for all three parts and ran each one to check it works. I only did mid-scale runs, so the full-size experiments and the plots for your report still need to be generated on your machine. Run `part1.py`, then `part2.py`, then `part3.py`, in that order. `README.md` has the exact commands, and adding `--quick` to any script gives a fast smoke test.
+
+**What each part does**
+- **Part 1:** `part1.py` compares on-policy first-visit MC at three epsilon values against off-policy MC with weighted importance sampling, on a track I drew myself (A or B). It saves learning curves, trajectory plots of the trained policy (with an optional GIF), and the trained Q-table for Part 2.
+- **Part 2:** `part2.py` adds a second car that follows the Part 1 greedy policy. The agent sees nothing, the other car's relative position, or its position plus a fast/slow flag. The opponent can also start together with the agent, wait six steps, or get a six-step head start. It reports steps and collisions per episode and writes a summary CSV.
+- **Part 3:** `part3.py` runs a key-and-door cliff grid world and compares first-visit, every-visit and off-policy MC. It also compares three versions of the environment, with slip probability 0, 0.02 and 0.1. An exact value-iteration solution is plotted as the reference line. A short route along the cliff edge is optimal when there is no slip, and a longer safe route is optimal once slip is above about 0.03.
+
+**What I saw in the mid-scale test runs**
+- **Off-policy vs on-policy:** on-policy learns the racetrack in a few thousand episodes. Off-policy was still improving after 60,000 episodes, so Part 1 will likely show a big gap. Only the tail of each episode after the last non-greedy action contributes to its updates.
+- **Observing the other car:** with the opponent starting together or waiting, seeing its position cut collisions in one seed. With a head start, the agent that could not see it collided about 0.11 times per episode versus about 0.03 for the one that could. These are single-seed results, so check them with several seeds before writing them up.
+- **Grid world pitfall:** my first version made the cliff end the episode, and learning collapsed because a quick death scored about the same as wandering until the step cap. I changed the cliff to send the agent back to the start. This is worth a paragraph in the report, since it comes from MC needing every episode to terminate.
+- **Every-visit surprise:** every-visit MC got stuck at about −100 in all four test seeds while first-visit worked. I haven't investigated why.
+
+**Judgment calls to know about**
+- **Track layout:** my tracks are approximations of the book's, not exact copies.
+- **Velocity range:** velocity components go from 0 to 5 inclusive.
+- **Collision rule:** a collision occurs when the two cars' paths in one step share a cell.
+- **Policy plot:** arrows for rarely visited states in the grid-world policy plot are unreliable, because MC only updates states it actually visits.
+
+Files are in `racetrack_hw`:
+- README.md
+- mc.py
+- racetrack.py
+- gridworld.py
+- viz.py
+- part1.py
+- part2.py
+- part3.py
+
+User: can you explain again why off policy method in part 1 falls off largely compared to on policy methods?
+
+Agent: The leading explanation is how off-policy MC assigns credit. I haven't run an ablation to confirm it, so treat it as the likely cause rather than a proven one.
+
+**How off-policy MC uses an episode.** The algorithm walks backwards from the end of the episode and stops at the first action that the greedy target policy wouldn't have taken. Everything before that point, which is most of the episode, gets zero importance weight and teaches nothing. So each episode only updates the tail where the behaviour policy happened to agree with the greedy policy at every step.
+
+**Why that tail is short in the racetrack.** Under an $\varepsilon$-greedy behaviour policy with $\varepsilon=0.1$, the chance of a non-greedy action on any step is roughly 0.09. The chance that the last $k$ steps are all greedy is therefore about $0.91^k$:
+
+| tail length $k$ | chance all greedy |
+|---|---|
+| 10 | ~0.39 |
+| 30 | ~0.06 |
+| 100 | ~0.0001 |
+
+Early in training the policy is bad, so episodes run to the 300-step cap, and the usable tail is typically only a handful of steps near the end. States near the start line are almost never updated. To learn them, the agent needs a whole episode of greedy actions leading to the finish, and that is exactly what it can't do yet.
+
+**Why on-policy MC doesn't have this problem.** Its first-visit update applies to every state-action pair visited in the episode, whatever action was taken, because the behaviour policy and the policy being improved are the same. Each episode gives credit to all of its states, so the long, exploratory early episodes still teach something useful.
+
+**Why it works in the Part 3 grid world.** Episodes there are short (tens of steps) and the state space is tiny, so the greedy tail is long relative to the episode and covers most of the states. The same algorithm learned well there, which fits the explanation above. It's consistent with the mechanism but doesn't prove it.
+
+**Two things that likely make it worse in Part 1:**
+- **Optimistic initialisation:** $Q=0$ makes the greedy policy keep changing as states get tried and drop below zero. A moving target means the "all greedy" tail from one episode may no longer match the greedy policy by the time it's used.
+- **No tuning:** I used the default behaviour $\varepsilon=0.1$. A smaller value would lengthen the usable tails, so the off-policy result reflects default settings, not the best this method can do.
+
+If you want to check the explanation, there are two cheap experiments. You could log how many steps each off-policy episode actually updates, to see whether the average really is a few steps. Or you could rerun off-policy with behaviour $\varepsilon=0.02$ and see whether learning speeds up.
+
+User: I want to redesign part 3 grid world to have wind that add random velocity from bottom to top for three random columns and have one prize that reside in a random cell that automatically picks up (must pick up before completion of race). rewrite me the code for part 3
+
+Agent: I'll start by rewriting the environment. I'm making a few design choices: the three windy columns and the prize cell are drawn at random when the environment is created and then stay fixed (so the state stays small enough for tabular MC). Wind strength is random on every step. The wind carries the agent through each cell on its way up, so it can sweep over the prize or goal. I'll check the learning behaviour before writing the report.
+
+Now a quick check of the layouts, the exact optimal returns, and whether MC can learn this task at all.
+
+MC can learn this task, but the results vary a lot between algorithms and settings. Before fixing the experimental setup, I'm checking more seeds and a longer training budget.
+
+The smoke test passes. A full Exp A run is too long for one call, so I'm restructuring so each experiment can run a subset of its cells, cache the results, and then combine them into one figure.
+
+Everything runs. Now the full experiments, starting with Exp A cells 0 and 1 (epsilon = 0.1 and 0.3 with Q0 = 0).
+
+Nothing was printed within the time limit, so runs are slower than I estimated. I'll time a single run.
+
+The earlier failure was just `time` missing from this shell, and runs take only a few seconds each. Rerunning Exp A cells 0 and 1.
+
+Exp A is done. Now Exp B (wind strength), one algorithm at a time.
+
+Now Exp C (10 random layouts), in two chunks.
+
+All experiments are done. I'll check the figures before writing about them.
+
+The report compiles cleanly and the tables and figures render properly. Last, I'll update the README and clean up.
+
+I replaced the Part 3 grid world with the windy prize race and rewrote the report section. I ran every experiment at full scale, and the report's numbers and figures come from those runs. The report compiles to 12 pages.
+
+**The new environment** (`gridworld.py`):
+- **Layout:** a 7×10 grid. The car starts bottom-left and must reach bottom-right.
+- **Wind:** three randomly chosen columns blow upward. Each step, the agent in a windy column is carried up 0 to 2 cells at random, cell by cell, so it can be swept over the prize or the goal.
+- **Prize:** one prize sits in a random cell and is picked up automatically. The race only finishes if the agent enters the goal while holding it.
+- **State:** (row, column, has_prize).
+- **Reference solution:** value iteration gives the exact optimal return for comparison.
+
+**Two interpretations I chose:** the windy columns and prize cell are drawn once when the environment is created and then stay fixed, so the state stays small enough for tabular MC. The wind strength is random on every step. If you meant the layout to change every episode, that would need the layout in the state, which blows up the table. I note it as an extension in the report.
+
+**Experiments** (`part3.py`, 8 seeds, 5,000 episodes each):
+- **A:** first-visit, every-visit and off-policy MC across two epsilon values and two initial Q values.
+- **B:** wind strength from 0 to 3, on two layouts.
+- **C:** ten random layouts.
+
+**Findings:**
+- **Algorithm ranking depends on exploration.** First-visit needed ε=0.3 (7 of 8 seeds solved, versus at most 1 of 8 at ε=0.1). Off-policy solved 8 of 8 at ε=0.1 but 0 of 8 at ε=0.3 with Q0=25. Every-visit was the least reliable.
+- **MC solves the race but not optimally.** Solved runs finish about five steps worse than optimal on average.
+- **Wind makes learning harder even when the optimum doesn't change.** In layout 0, the best route runs along the top row where wind can't lift the agent, so the optimal return is 4.0 at every wind strength. First-visit still solved fewer seeds as wind grew (8, 8, 7, 4 of 8).
+- **Across 10 layouts,** the first-visit setting solved 74 of 80 runs.
+
+Files are in `racetrack_hw`:
+- gridworld.py
+- part3.py
